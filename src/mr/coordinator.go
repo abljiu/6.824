@@ -1,16 +1,21 @@
 package mr
 
-import "log"
-import "net"
-import "os"
-import "net/rpc"
-import "net/http"
+import (
+	"log"
+	"math"
+	"net"
+	"net/http"
+	"net/rpc"
+	"os"
+	"sync"
+)
 
 type Coordinator struct {
 	// Your definitions here.
-	nums    int
-	Keys    []string
-	nReduce int
+	nReduce   int
+	lock      sync.Mutex
+	state     string
+	waitTasks chan Task
 }
 
 // Your code here -- RPC handlers for the worker to call.
@@ -24,8 +29,43 @@ func (c *Coordinator) Example(args *ExampleArgs, reply *ExampleReply) error {
 }
 
 func (c *Coordinator) Tasks(args *Args, reply *Reply) error {
-	reply.Y = c.Keys[c.nums-1]
-	c.nums--
+	if args.FinishTaskID != -1 {
+		if args.FinishTaskType == MAP {
+			task := Task{
+				ID:       args.FinishTaskID,
+				TaskType: REDUCE,
+				WorkerID: args.WorkerID,
+			}
+			c.lock.Lock()
+			log.Printf("Put task %d into REDUCE", args.FinishTaskID)
+			c.waitTasks <- task
+			c.lock.Unlock()
+		}
+	}
+	c.lock.Lock()
+	select {
+	case task := <-c.waitTasks:
+		if task.TaskType == MAP {
+			reply.TaskFile = task.WaitMapFile
+			reply.MapID = task.ID
+			reply.TaskType = MAP
+			reply.NReduce = c.nReduce
+			c.state = MAP
+		} else if task.TaskType == REDUCE {
+			reply.ReduceID = task.ID
+			reply.TaskType = REDUCE
+			reply.NReduce = c.nReduce
+			reply.MapID = task.WorkerID
+			c.state = REDUCE
+		}
+	default:
+		{
+			c.state = DONE
+			reply.TaskType = DONE
+			log.Printf("All tasks have been completed!")
+		}
+	}
+	c.lock.Unlock()
 	return nil
 }
 
@@ -47,8 +87,11 @@ func (c *Coordinator) server() {
 // if the entire job has finished.
 func (c *Coordinator) Done() bool {
 	ret := false
-
-	// Your code here.
+	c.lock.Lock()
+	defer c.lock.Unlock()
+	if c.state == DONE {
+		ret = true
+	}
 
 	return ret
 }
@@ -58,13 +101,20 @@ func (c *Coordinator) Done() bool {
 // nReduce is the number of reduce tasks to use.
 func MakeCoordinator(files []string, nReduce int) *Coordinator {
 	c := Coordinator{
-		nReduce: nReduce,
+		nReduce:   nReduce,
+		state:     MAP,
+		waitTasks: make(chan Task, int(math.Max(float64(len(files)), float64(nReduce)))),
 	}
 	// Your code here.
-	for _, filename := range files {
-		c.Keys = append(c.Keys, filename)
-		c.nums++
+	for i, file := range files {
+		task := Task{
+			ID:          i,
+			TaskType:    MAP,
+			WaitMapFile: file,
+		}
+		c.waitTasks <- task
 	}
+	log.Printf("Coordinator completes work queue initialization")
 	c.server()
 
 	return &c

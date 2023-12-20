@@ -6,12 +6,22 @@ import "net/rpc"
 import "hash/fnv"
 import "os"
 import "io"
+import "encoding/json"
+import "sort"
 
 // Map functions return a slice of KeyValue.
 type KeyValue struct {
 	Key   string
 	Value string
 }
+
+// for sorting by key.
+type ByKey []KeyValue
+
+// for sorting by key.
+func (a ByKey) Len() int           { return len(a) }
+func (a ByKey) Swap(i, j int)      { a[i], a[j] = a[j], a[i] }
+func (a ByKey) Less(i, j int) bool { return a[i].Key < a[j].Key }
 
 // use ihash(key) % NReduce to choose the reduce task number for each KeyValue emitted by Map.
 func ihash(key string) int {
@@ -24,20 +34,23 @@ func ihash(key string) int {
 func Worker(mapf func(string, string) []KeyValue,
 	reducef func(string, []string) string) {
 	id := os.Getpid()
-
+	args := Args{
+		WorkerID:       id,
+		FinishTaskID:   -1,
+		FinishTaskType: "",
+	}
+	reply := Reply{}
 	// Your worker implementation here.
 	// uncomment to send the Example RPC to the coordinator.
 	for {
-		args := Args{
-			WorkerID: id,
-		}
-		reply := Reply{}
 		call("Coordinator.Tasks", &args, &reply)
 
 		switch reply.TaskType {
 		case MAP:
 			{
-				filename := reply.Task
+				log.Printf("Worker %d start MAP task %d", id, reply.MapID)
+				//解析给定文件
+				filename := reply.TaskFile
 				file, err := os.Open(filename)
 				if err != nil {
 					log.Fatalf("cannot open %v", filename)
@@ -49,26 +62,85 @@ func Worker(mapf func(string, string) []KeyValue,
 				file.Close()
 				kva := mapf(filename, string(content))
 				hashedKva := make(map[int][]KeyValue)
-
+				//对键值对进行哈希 分成nReduce个数组
 				for _, kv := range kva {
-					hashed := ihash(kv.Key) % reply.nReduce
+					hashed := ihash(kv.Key) % reply.NReduce
 					hashedKva[hashed] = append(hashedKva[hashed], kv)
 				}
-				for i := 0; i < reply.nReduce; i++ {
-					filename := "mr-" + string(reply.TaskID) + "-" + string(i)
+
+				//生成中间文件 mr-X-Y
+				for i := 0; i < reply.NReduce; i++ {
+					filename := "mr-" + fmt.Sprint(id) + "-" + fmt.Sprint(i)
 					outFile, _ := os.Create(filename)
+					enc := json.NewEncoder(outFile)
 					for _, kv := range hashedKva[i] {
-						fmt.Fprintf(outFile, "%v\t%v\n", kv.Key, kv.Value)
+						err := enc.Encode(&kv)
+						if err != nil {
+							log.Fatalf("cannot encode in tmp file: %v", filename)
+						}
 					}
 					outFile.Close()
 				}
+				args.FinishTaskID = reply.MapID
+				args.FinishTaskType = MAP
 			}
 		case REDUCE:
 			{
+				log.Printf("Worker %d start REDUCE task %d", id, reply.ReduceID)
 
+				//读取给定的中间文件
+				intermediate := []KeyValue{}
+				filename := "mr-" + fmt.Sprint(reply.MapID) + "-" + fmt.Sprint(reply.ReduceID)
+				outFile, _ := os.Open(filename)
+				dec := json.NewDecoder(outFile)
+				for {
+					var kv KeyValue
+					if err := dec.Decode(&kv); err != nil {
+						// 如果是 EOF 错误，表示文件读取完毕
+						if err == io.EOF {
+							break
+						}
+						log.Fatalf("cannot decode in tmp file: %v", filename)
+					}
+					intermediate = append(intermediate, kv)
+				}
+				outFile.Close()
+
+				//将中间文件键值对数组排序
+				sort.Sort(ByKey(intermediate))
+
+				oname := "mr-out-" + fmt.Sprint(reply.ReduceID)
+				ofile, _ := os.Create(oname)
+
+				i := 0
+				for i < len(intermediate) {
+					j := i + 1
+					//找到key相同的键值对
+					for j < len(intermediate) && intermediate[j].Key == intermediate[i].Key {
+						j++
+					}
+					values := []string{}
+					for k := i; k < j; k++ {
+						values = append(values, intermediate[k].Value)
+					}
+					output := reducef(intermediate[i].Key, values)
+
+					fmt.Fprintf(ofile, "%v %v\n", intermediate[i].Key, output)
+
+					i = j
+				}
+				ofile.Close()
+				args.FinishTaskID = reply.ReduceID
+				args.FinishTaskType = REDUCE
+			}
+		case DONE:
+			{
+				log.Printf("All tasks have been completed!")
+				log.Printf("Worker %d exit\n", id)
+				return
 			}
 		}
-
+		log.Printf("Worker %d completed the work %s ID %d", id, args.FinishTaskType, args.FinishTaskID)
 	}
 
 }

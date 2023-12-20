@@ -79,6 +79,7 @@ failed_any=0
 
 # generate the correct output
 ../mrsequential ../../mrapps/wc.so ../pg*txt || exit 1
+cp mr-out* /tmp
 sort mr-out-0 > mr-correct-wc.txt
 rm -f mr-out*
 
@@ -86,6 +87,7 @@ echo '***' Starting wc test.
 
 maybe_quiet $TIMEOUT ../mrcoordinator ../pg*txt &
 pid=$!
+
 
 # give the coordinator time to create the sockets.
 sleep 1
@@ -107,6 +109,7 @@ then
 else
   echo '---' wc output is not the same as mr-correct-wc.txt
   echo '---' wc test: FAIL
+  exit
   failed_any=1
 fi
 

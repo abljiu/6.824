@@ -10,14 +10,26 @@ const (
 	DONE   = "DONE"
 )
 
-//
-// remember to capitalize all names.
-//
+type Args struct {
+	WorkerID int
+	FinishTaskID int 
+	FinishTaskType string
+}
 
-//
-// example to show how to declare the arguments
-// and reply for an RPC.
-//
+type Reply struct {
+	TaskFile string //需要map的文件
+	MapID    int    //等待Map的ID任务号 or 完成map后的ID号
+	TaskType string //任务类型
+	NReduce  int    //reduce任务的个数
+	ReduceID int    //等待Reduce的ID任务号
+}
+
+type Task struct {
+	ID          int    //任务ID
+	WorkerID    int    //处理该任务的工人ID
+	TaskType    string //任务类型
+	WaitMapFile string //待map文件
+}
 
 type ExampleArgs struct {
 	X int
@@ -26,19 +38,6 @@ type ExampleArgs struct {
 type ExampleReply struct {
 	Y int
 }
-
-type Args struct {
-	WorkerID int
-}
-
-type Reply struct {
-	Task string
-	TaskID int
-	TaskType string
-	nReduce int 
-}
-
-// Add your RPC definitions here.
 
 // Cook up a unique-ish UNIX-domain socket name
 // in /var/tmp, for the coordinator.
