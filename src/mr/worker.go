@@ -1,13 +1,17 @@
 package mr
 
-import "fmt"
-import "log"
-import "net/rpc"
-import "hash/fnv"
-import "os"
-import "io"
-import "encoding/json"
-import "sort"
+import (
+	"encoding/json"
+	"fmt"
+	"hash/fnv"
+	"io"
+	"log"
+	"net/rpc"
+	"os"
+	"path"
+	"sort"
+
+)
 
 // Map functions return a slice of KeyValue.
 type KeyValue struct {
@@ -44,7 +48,7 @@ func Worker(mapf func(string, string) []KeyValue,
 	// uncomment to send the Example RPC to the coordinator.
 	for {
 		call("Coordinator.Tasks", &args, &reply)
-
+		log.Print("call back", args, reply)
 		switch reply.TaskType {
 		case MAP:
 			{
@@ -60,6 +64,7 @@ func Worker(mapf func(string, string) []KeyValue,
 					log.Fatalf("cannot read %v", filename)
 				}
 				file.Close()
+				//获得该文件键值对数组
 				kva := mapf(filename, string(content))
 				hashedKva := make(map[int][]KeyValue)
 				//对键值对进行哈希 分成nReduce个数组
@@ -70,8 +75,8 @@ func Worker(mapf func(string, string) []KeyValue,
 
 				//生成中间文件 mr-X-Y
 				for i := 0; i < reply.NReduce; i++ {
-					filename := "mr-" + fmt.Sprint(id) + "-" + fmt.Sprint(i)
-					outFile, _ := os.Create(filename)
+					filename := "mr-" + path.Base(reply.TaskFile) + "-" + fmt.Sprint(i)
+					outFile, _ := os.OpenFile(filename, os.O_RDWR|os.O_CREATE|os.O_TRUNC, 0644)
 					enc := json.NewEncoder(outFile)
 					for _, kv := range hashedKva[i] {
 						err := enc.Encode(&kv)
@@ -83,30 +88,37 @@ func Worker(mapf func(string, string) []KeyValue,
 				}
 				args.FinishTaskID = reply.MapID
 				args.FinishTaskType = MAP
+				break
 			}
 		case REDUCE:
 			{
 				log.Printf("Worker %d start REDUCE task %d", id, reply.ReduceID)
-
+				fmt.Printf("reply: %v\n", reply)
 				//读取给定的中间文件
 				intermediate := []KeyValue{}
-				filename := "mr-" + fmt.Sprint(reply.MapID) + "-" + fmt.Sprint(reply.ReduceID)
-				outFile, _ := os.Open(filename)
-				dec := json.NewDecoder(outFile)
-				for {
-					var kv KeyValue
-					if err := dec.Decode(&kv); err != nil {
-						// 如果是 EOF 错误，表示文件读取完毕
-						if err == io.EOF {
-							break
-						}
-						log.Fatalf("cannot decode in tmp file: %v", filename)
-					}
-					intermediate = append(intermediate, kv)
-				}
-				outFile.Close()
 
-				//将中间文件键值对数组排序
+				for _, TaskFile := range reply.F {
+					filename := "mr-" + path.Base(TaskFile) + "-" + fmt.Sprint(reply.ReduceID)
+					outFile, err := os.Open(filename)
+					if err != nil {
+						panic(err)
+					}
+					dec := json.NewDecoder(outFile)
+					for {
+						var kv KeyValue
+						if err := dec.Decode(&kv); err != nil {
+							// 如果是 EOF 错误，表示文件读取完毕
+							if err == io.EOF {
+								break
+							}
+							log.Fatalf("cannot decode in tmp file: %v", filename)
+						}
+						intermediate = append(intermediate, kv)
+					}
+					outFile.Close()
+				}
+				//将中间文件的键值对数组排序
+				fmt.Printf("intermediate: %v\n", intermediate)
 				sort.Sort(ByKey(intermediate))
 
 				oname := "mr-out-" + fmt.Sprint(reply.ReduceID)
@@ -132,6 +144,7 @@ func Worker(mapf func(string, string) []KeyValue,
 				ofile.Close()
 				args.FinishTaskID = reply.ReduceID
 				args.FinishTaskType = REDUCE
+				break
 			}
 		case DONE:
 			{

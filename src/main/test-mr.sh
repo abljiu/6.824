@@ -73,6 +73,7 @@ rm -f mr-*
 (cd .. && go build $RACE mrsequential.go) || exit 1
 
 failed_any=0
+exit
 
 #########################################################
 # first word-count
@@ -111,6 +112,7 @@ else
   echo '---' wc test: FAIL
   exit
   failed_any=1
+  exit
 fi
 
 # wait for remaining workers and coordinator to exit.
@@ -142,6 +144,7 @@ else
   echo '---' indexer output is not the same as mr-correct-indexer.txt
   echo '---' indexer test: FAIL
   failed_any=1
+  exit
 fi
 
 wait
@@ -163,6 +166,7 @@ then
   echo '---' saw "$NT" workers rather than 2
   echo '---' map parallelism test: FAIL
   failed_any=1
+  exit
 fi
 
 if cat mr-out* | grep '^parallel.* 2' > /dev/null
@@ -172,6 +176,7 @@ else
   echo '---' map workers did not run in parallel
   echo '---' map parallelism test: FAIL
   failed_any=1
+  exit
 fi
 
 wait
@@ -194,6 +199,7 @@ then
   echo '---' too few parallel reduces.
   echo '---' reduce parallelism test: FAIL
   failed_any=1
+  exit
 else
   echo '---' reduce parallelism test: PASS
 fi
@@ -221,6 +227,7 @@ else
   echo '---' map jobs ran incorrect number of times "($NT != 8)"
   echo '---' job count test: FAIL
   failed_any=1
+  exit
 fi
 
 wait
@@ -280,6 +287,7 @@ else
   echo '---' output changed after first worker exited
   echo '---' early exit test: FAIL
   failed_any=1
+  exit
 fi
 rm -f mr-*
 
@@ -330,10 +338,12 @@ else
   echo '---' crash output is not the same as mr-correct-crash.txt
   echo '---' crash test: FAIL
   failed_any=1
+  exit
 fi
 
 #########################################################
-if [ $failed_any -eq 0 ]; then
+if [ $failed_any -
+exiteq 0 ]; then
     echo '***' PASSED ALL TESTS
 else
     echo '***' FAILED SOME TESTS

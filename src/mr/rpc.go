@@ -11,8 +11,8 @@ const (
 )
 
 type Args struct {
-	WorkerID int
-	FinishTaskID int 
+	WorkerID       int
+	FinishTaskID   int
 	FinishTaskType string
 }
 
@@ -22,6 +22,7 @@ type Reply struct {
 	TaskType string //任务类型
 	NReduce  int    //reduce任务的个数
 	ReduceID int    //等待Reduce的ID任务号
+	F    []string
 }
 
 type Task struct {
