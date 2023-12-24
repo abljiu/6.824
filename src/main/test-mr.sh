@@ -73,7 +73,6 @@ rm -f mr-*
 (cd .. && go build $RACE mrsequential.go) || exit 1
 
 failed_any=0
-exit
 
 #########################################################
 # first word-count

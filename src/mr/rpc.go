@@ -1,7 +1,10 @@
 package mr
 
-import "os"
-import "strconv"
+import (
+	"os"
+	"strconv"
+	"time"
+)
 
 // RPC definitions.
 const (
@@ -14,22 +17,25 @@ type Args struct {
 	WorkerID       int
 	FinishTaskID   int
 	FinishTaskType string
+	FinishMapFile  string
 }
 
 type Reply struct {
-	TaskFile string //需要map的文件
-	MapID    int    //等待Map的ID任务号 or 完成map后的ID号
-	TaskType string //任务类型
-	NReduce  int    //reduce任务的个数
-	ReduceID int    //等待Reduce的ID任务号
-	F    []string
+	TaskFile        string //需要map的文件
+	MapID           int    //等待Map的ID任务号 or 完成map后的ID号
+	TaskType        string //任务类型
+	NReduce         int    //reduce任务的个数
+	ReduceID        int    //等待Reduce的ID任务号
+	WaitReduceFiles []string
 }
 
 type Task struct {
-	ID          int    //任务ID
-	WorkerID    int    //处理该任务的工人ID
-	TaskType    string //任务类型
-	WaitMapFile string //待map文件
+	ID              int       //任务ID
+	WorkerID        int       //处理该任务的工人ID
+	TaskType        string    //任务类型
+	WaitMapFile     string    //待map文件
+	DeadLine        time.Time //截止时间
+	WaitReduceFiles []string  //待reduce文件
 }
 
 type ExampleArgs struct {

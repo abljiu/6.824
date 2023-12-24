@@ -18,9 +18,9 @@ type Coordinator struct {
 	state       string
 	MapTasks    chan Task
 	ReduceTasks chan Task
-	wang        chan int
-	fileLen     int
+	nMap        int
 	files       []string
+	tasks       map[string]Task
 }
 
 // Your code here -- RPC handlers for the worker to call.
@@ -37,30 +37,29 @@ func dolog(i ...interface{}) {
 }
 
 func (c *Coordinator) Tasks(args *Args, reply *Reply) error {
-	defer func(r *Reply) {
-		dolog("replyyyyyyy     ", *args, *r)
-	}(reply)
 
 	log.Printf("Coordinator get Call %+v %+v", *args, *reply)
 	if args.FinishTaskID != -1 {
-		dolog("try get lock", *args, *reply)
 		c.lock.Lock()
-		dolog("get lock", *args, *reply)
 		if args.FinishTaskType == MAP {
-			task := Task{
-				ID:       args.FinishTaskID,
-				TaskType: REDUCE,
-				WorkerID: args.WorkerID,
-			}
-			log.Printf("Put task %d into REDUCE Len Chan%d capChan%d", args.FinishTaskID, len(c.ReduceTasks), cap(c.ReduceTasks))
-			c.ReduceTasks <- task
-			if len(c.ReduceTasks) == c.fileLen {
+			c.nMap--
+			if c.nMap == 0 {
 				log.Printf("c.state = REDUCE")
 				c.state = REDUCE
+				for i := 0; i < c.nReduce; i++ {
+					task := Task{
+						ID:              i,
+						WaitReduceFiles: c.files,
+					}
+					c.ReduceTasks <- task
+				}
 			}
-		}
-		if len(c.wang) == 0 {
-			c.state = DONE
+		} else if args.FinishTaskType == REDUCE {
+			c.nReduce--
+			if c.nMap == 0 {
+				log.Printf("c.state = DONE")
+				c.state = DONE
+			}
 		}
 		c.lock.Unlock()
 		dolog("unlock", *args)
@@ -74,7 +73,8 @@ up:
 			reply.MapID = task.ID
 			reply.TaskType = MAP
 			reply.NReduce = c.nReduce
-			copy(reply.F, c.files)
+			task.DeadLine = time.Now().Add(10 * time.Second)
+			c.tasks[task.TaskType+fmt.Sprint(task.ID)] = task
 		default:
 			c.lock.Unlock()
 			time.Sleep(100 * time.Millisecond)
@@ -82,15 +82,16 @@ up:
 		}
 
 	} else if c.state == REDUCE {
-
 		select {
-		case task := <-c.wang:
-			reply.ReduceID = task
+		case task := <-c.ReduceTasks:
 			reply.TaskType = REDUCE
 			reply.NReduce = c.nReduce
-			reply.MapID = task
-			reply.F = append(reply.F, c.files...)
-			fmt.Printf("reply: %v\n", reply)
+			reply.WaitReduceFiles = task.WaitReduceFiles
+			reply.ReduceID = task.ID
+			task.DeadLine = time.Now().Add(10 * time.Second)
+			c.tasks[task.TaskType+fmt.Sprint(task.ID)] = task
+			// fmt.Printf("reply: %v\n", reply)
+
 		default:
 			c.lock.Unlock()
 			time.Sleep(100 * time.Millisecond)
@@ -122,14 +123,15 @@ func (c *Coordinator) server() {
 // main/mrcoordinator.go calls Done() periodically to find out
 // if the entire job has finished.
 func (c *Coordinator) Done() bool {
-	ret := false
 	c.lock.Lock()
-	defer c.lock.Unlock()
 	if c.state == DONE {
-		ret = true
+		c.lock.Unlock()
+		time.Sleep(2 * time.Second)
+		return true
+	} else {
+		c.lock.Unlock()
+		return false
 	}
-
-	return ret
 }
 
 // create a Coordinator.
@@ -141,12 +143,9 @@ func MakeCoordinator(files []string, nReduce int) *Coordinator {
 		state:       MAP,
 		MapTasks:    make(chan Task, len(files)),
 		ReduceTasks: make(chan Task, nReduce),
-		fileLen:     len(files),
-		wang:        make(chan int, nReduce),
 		files:       files,
-	}
-	for i := 0; i < nReduce; i++ {
-		c.wang <- i
+		tasks:       make(map[string]Task),
+		nMap:        len(files),
 	}
 	// Your code here.
 	for i, file := range files {
@@ -155,10 +154,29 @@ func MakeCoordinator(files []string, nReduce int) *Coordinator {
 			TaskType:    MAP,
 			WaitMapFile: file,
 		}
+		c.tasks[task.TaskType+fmt.Sprint(task.ID)] = task
 		c.MapTasks <- task
 	}
 	log.Printf("Coordinator completes work queue initialization")
 	c.server()
-	log.Print(c, "\n\n\n\n")
+	go func() {
+		for {
+			time.Sleep(500 * time.Millisecond)
+
+			c.lock.Lock()
+			for _, task := range c.tasks {
+				if task.WorkerID != -1 && time.Now().After(task.DeadLine) {
+					// 回收并重新分配
+					task.WorkerID = -1
+					if task.TaskType == MAP {
+						c.MapTasks <- task
+					} else if task.TaskType == REDUCE {
+						c.ReduceTasks <- task
+					}
+				}
+			}
+			c.lock.Unlock()
+		}
+	}()
 	return &c
 }

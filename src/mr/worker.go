@@ -10,7 +10,6 @@ import (
 	"os"
 	"path"
 	"sort"
-
 )
 
 // Map functions return a slice of KeyValue.
@@ -88,6 +87,7 @@ func Worker(mapf func(string, string) []KeyValue,
 				}
 				args.FinishTaskID = reply.MapID
 				args.FinishTaskType = MAP
+				args.FinishMapFile = reply.TaskFile
 				break
 			}
 		case REDUCE:
@@ -97,8 +97,8 @@ func Worker(mapf func(string, string) []KeyValue,
 				//读取给定的中间文件
 				intermediate := []KeyValue{}
 
-				for _, TaskFile := range reply.F {
-					filename := "mr-" + path.Base(TaskFile) + "-" + fmt.Sprint(reply.ReduceID)
+				for _, TaskFile := range reply.WaitReduceFiles {
+					filename := "mr-" + TaskFile + "-" + fmt.Sprint(reply.ReduceID)
 					outFile, err := os.Open(filename)
 					if err != nil {
 						panic(err)
@@ -118,7 +118,7 @@ func Worker(mapf func(string, string) []KeyValue,
 					outFile.Close()
 				}
 				//将中间文件的键值对数组排序
-				fmt.Printf("intermediate: %v\n", intermediate)
+				// fmt.Printf("intermediate: %v\n", intermediate)
 				sort.Sort(ByKey(intermediate))
 
 				oname := "mr-out-" + fmt.Sprint(reply.ReduceID)
