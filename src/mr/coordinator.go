@@ -37,11 +37,14 @@ func dolog(i ...interface{}) {
 }
 
 func (c *Coordinator) Tasks(args *Args, reply *Reply) error {
-
 	log.Printf("Coordinator get Call %+v %+v", *args, *reply)
 	if args.FinishTaskID != -1 {
 		c.lock.Lock()
 		if args.FinishTaskType == MAP {
+			task := Task{
+				WorkerID: -2,
+			}
+			c.tasks[args.FinishTaskType+fmt.Sprint(args.FinishTaskID)] = task
 			c.nMap--
 			if c.nMap == 0 {
 				log.Printf("c.state = REDUCE")
@@ -56,7 +59,11 @@ func (c *Coordinator) Tasks(args *Args, reply *Reply) error {
 			}
 		} else if args.FinishTaskType == REDUCE {
 			c.nReduce--
-			if c.nMap == 0 {
+			task := Task{
+				WorkerID: -2,
+			}
+			c.tasks[args.FinishTaskType+fmt.Sprint(args.FinishTaskID)] = task
+			if c.nReduce == 0 {
 				log.Printf("c.state = DONE")
 				c.state = DONE
 			}
@@ -65,17 +72,22 @@ func (c *Coordinator) Tasks(args *Args, reply *Reply) error {
 		dolog("unlock", *args)
 	}
 up:
+	// println("try get lock")
 	c.lock.Lock()
+	// println("get lock")
 	if c.state == MAP {
 		select {
 		case task := <-c.MapTasks:
+			// fmt.Println("append Map task")
 			reply.TaskFile = task.WaitMapFile
 			reply.MapID = task.ID
 			reply.TaskType = MAP
 			reply.NReduce = c.nReduce
-			task.DeadLine = time.Now().Add(10 * time.Second)
+			task.WorkerID = args.WorkerID
+			task.DeadLine = time.Now().Add(5 * time.Second)
 			c.tasks[task.TaskType+fmt.Sprint(task.ID)] = task
 		default:
+			// fmt.Println("no task")
 			c.lock.Unlock()
 			time.Sleep(100 * time.Millisecond)
 			goto up
@@ -84,15 +96,17 @@ up:
 	} else if c.state == REDUCE {
 		select {
 		case task := <-c.ReduceTasks:
+			// fmt.Println("append Reduce task", i)
 			reply.TaskType = REDUCE
 			reply.NReduce = c.nReduce
 			reply.WaitReduceFiles = task.WaitReduceFiles
 			reply.ReduceID = task.ID
+			task.WorkerID = args.WorkerID
 			task.DeadLine = time.Now().Add(10 * time.Second)
 			c.tasks[task.TaskType+fmt.Sprint(task.ID)] = task
 			// fmt.Printf("reply: %v\n", reply)
-
 		default:
+			// fmt.Println("no task")
 			c.lock.Unlock()
 			time.Sleep(100 * time.Millisecond)
 			goto up
@@ -153,6 +167,7 @@ func MakeCoordinator(files []string, nReduce int) *Coordinator {
 			ID:          i,
 			TaskType:    MAP,
 			WaitMapFile: file,
+			WorkerID:    -1,
 		}
 		c.tasks[task.TaskType+fmt.Sprint(task.ID)] = task
 		c.MapTasks <- task
@@ -161,20 +176,44 @@ func MakeCoordinator(files []string, nReduce int) *Coordinator {
 	c.server()
 	go func() {
 		for {
-			time.Sleep(500 * time.Millisecond)
+			time.Sleep(50000 * time.Millisecond)
 
 			c.lock.Lock()
 			for _, task := range c.tasks {
-				if task.WorkerID != -1 && time.Now().After(task.DeadLine) {
+				if task.WorkerID != -1 && time.Now().After(task.DeadLine) && task.WorkerID != -2 {
 					// 回收并重新分配
 					task.WorkerID = -1
+					c.tasks[task.TaskType+fmt.Sprint(task.ID)] = task
 					if task.TaskType == MAP {
-						c.MapTasks <- task
+						select {
+						case c.MapTasks <- task:
+						default:
+							fmt.Printf("\n\n\n\n\n\nInput Map Fail , %d\n\n\n\n\n\n", len(c.MapTasks))
+							for {
+								select {
+								case i, ok := <-c.MapTasks:
+									if ok {
+										fmt.Printf("%#v", i)
+									}
+								default:
+									goto done
+								}
+							}
+						done:
+							os.Exit(1)
+							goto unlock
+						}
 					} else if task.TaskType == REDUCE {
-						c.ReduceTasks <- task
+						select {
+						case c.ReduceTasks <- task:
+						default:
+							fmt.Printf("\n\n\n\n\n\nInput Fail , %d\n\n\n\n\n\n", len(c.ReduceTasks))
+							goto unlock
+						}
 					}
 				}
 			}
+		unlock:
 			c.lock.Unlock()
 		}
 	}()

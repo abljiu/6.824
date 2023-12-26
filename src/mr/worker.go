@@ -98,7 +98,7 @@ func Worker(mapf func(string, string) []KeyValue,
 				intermediate := []KeyValue{}
 
 				for _, TaskFile := range reply.WaitReduceFiles {
-					filename := "mr-" + TaskFile + "-" + fmt.Sprint(reply.ReduceID)
+					filename := "mr-" + path.Base(TaskFile) + "-" + fmt.Sprint(reply.ReduceID)
 					outFile, err := os.Open(filename)
 					if err != nil {
 						panic(err)
