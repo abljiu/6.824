@@ -53,8 +53,12 @@ func (c *Coordinator) Tasks(args *Args, reply *Reply) error {
 					task := Task{
 						ID:              i,
 						WaitReduceFiles: c.files,
+						TaskType:        REDUCE,
+						WorkerID:        -1,
 					}
 					c.ReduceTasks <- task
+					c.tasks[task.TaskType+fmt.Sprint(task.ID)] = task
+
 				}
 			}
 		} else if args.FinishTaskType == REDUCE {
@@ -102,7 +106,7 @@ up:
 			reply.WaitReduceFiles = task.WaitReduceFiles
 			reply.ReduceID = task.ID
 			task.WorkerID = args.WorkerID
-			task.DeadLine = time.Now().Add(10 * time.Second)
+			task.DeadLine = time.Now().Add(20 * time.Second)
 			c.tasks[task.TaskType+fmt.Sprint(task.ID)] = task
 			// fmt.Printf("reply: %v\n", reply)
 		default:
@@ -174,12 +178,14 @@ func MakeCoordinator(files []string, nReduce int) *Coordinator {
 	}
 	log.Printf("Coordinator completes work queue initialization")
 	c.server()
+
 	go func() {
 		for {
-			time.Sleep(50000 * time.Millisecond)
+			time.Sleep(5000 * time.Millisecond)
 
 			c.lock.Lock()
 			for _, task := range c.tasks {
+				// ungot 													// already mapped     //
 				if task.WorkerID != -1 && time.Now().After(task.DeadLine) && task.WorkerID != -2 {
 					// 回收并重新分配
 					task.WorkerID = -1
