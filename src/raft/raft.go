@@ -1,22 +1,21 @@
 package raft
 
 //
-// this is an outline of the API that raft must expose to
-// the service (or tester). see comments below for
-// each of these functions for more details.
+// 这是 raft 必须公开的 API 的概述
+// 服务（或测试器）。请参阅下面的评论
+// 每个函数的更多细节。
 //
 // rf = Make(...)
-//   create a new Raft server.
-// rf.Start(command interface{}) (index, term, isleader)
-//   start agreement on a new log entry
-// rf.GetState() (term, isLeader)
-//   ask a Raft for its current term, and whether it thinks it is leader
-// ApplyMsg
-//   each time a new entry is committed to the log, each Raft peer
-//   should send an ApplyMsg to the service (or tester)
-//   in the same server.
+// 创建一个新的 Raft 服务器。
+// rf.Start(命令接口{}) (索引, 术语, isleader)
+// 开始对新日志条目达成一致
+// rf.GetState()（术语，isLeader）
+// 向 Raft 询问其当前任期，以及它是否认为自己是领导者
+// 应用消息
+// 每次有新条目提交到日志时，每个 Raft 对等点
+// 应该向服务（或测试人员）发送ApplyMsg
+// 在同一服务器中。
 //
-
 import (
 	//	"bytes"
 	"math/rand"
@@ -28,16 +27,15 @@ import (
 	"6.5840/labrpc"
 )
 
-
-// as each Raft peer becomes aware that successive log entries are
-// committed, the peer should send an ApplyMsg to the service (or
-// tester) on the same server, via the applyCh passed to Make(). set
-// CommandValid to true to indicate that the ApplyMsg contains a newly
-// committed log entry.
+// 当每个 Raft 对等体意识到连续的日志条目
+// 提交后，对等方应向服务发送一条 ApplyMsg（或
+// tester) 在同一服务器上，通过 applyCh 传递给 Make()。放
+// CommandValid 为 true 表示 ApplyMsg 包含新的
+// 提交的日志条目。
 //
-// in part 2D you'll want to send other kinds of messages (e.g.,
-// snapshots) on the applyCh, but set CommandValid to false for these
-// other uses.
+// 在 2D 部分中，您需要发送其他类型的消息（例如，
+// snapshots) 在 applyCh 上，但将 CommandValid 设置为 false
+// 其他用途。
 type ApplyMsg struct {
 	CommandValid bool
 	Command      interface{}
@@ -50,22 +48,22 @@ type ApplyMsg struct {
 	SnapshotIndex int
 }
 
-// A Go object implementing a single Raft peer.
+// 实现单个 Raft 对等点的 Go 对象。
 type Raft struct {
-	mu        sync.Mutex          // Lock to protect shared access to this peer's state
-	peers     []*labrpc.ClientEnd // RPC end points of all peers
-	persister *Persister          // Object to hold this peer's persisted state
-	me        int                 // this peer's index into peers[]
-	dead      int32               // set by Kill()
+	mu        sync.Mutex          // 锁定以保护对此对等点状态的共享访问
+	peers     []*labrpc.ClientEnd // 所有peer的RPC端点
+	persister *Persister          // 保存该对等点的持久状态的对象
+	me        int                 // 该节点在节点[]中的索引
+	dead      int32               // 由 Kill() 设置
 
-	// Your data here (2A, 2B, 2C).
-	// Look at the paper's Figure 2 for a description of what
-	// state a Raft server must maintain.
+	// 这里是您的数据（2A、2B、2C）。
+	// 查看论文的图 2 了解内容的描述
+	// Raft 服务器必须维护的状态。
 
 }
 
-// return currentTerm and whether this server
-// believes it is the leader.
+// 返回当前Term以及是否是这个服务器
+// 相信它是领导者。
 func (rf *Raft) GetState() (int, bool) {
 
 	var term int
@@ -74,16 +72,16 @@ func (rf *Raft) GetState() (int, bool) {
 	return term, isleader
 }
 
-// save Raft's persistent state to stable storage,
-// where it can later be retrieved after a crash and restart.
-// see paper's Figure 2 for a description of what should be persistent.
-// before you've implemented snapshots, you should pass nil as the
-// second argument to persister.Save().
-// after you've implemented snapshots, pass the current snapshot
-// (or nil if there's not yet a snapshot).
+// 将 Raft 的持久状态保存到稳定存储中，
+// 崩溃并重新启动后可以在其中检索它。
+// 请参阅论文的图 2，了解什么应该持久的描述。
+// 在实现快照之前，您应该传递 nil 作为
+// persister.Save() 的第二个参数。
+// 实现快照后，传递当前快照
+// （如果还没有快照则为零）。
 func (rf *Raft) persist() {
-	// Your code here (2C).
-	// Example:
+	// 这里是你的代码 (2C)。
+	// 例子：
 	// w := new(bytes.Buffer)
 	// e := labgob.NewEncoder(w)
 	// e.Encode(rf.xxx)
@@ -92,100 +90,98 @@ func (rf *Raft) persist() {
 	// rf.persister.Save(raftstate, nil)
 }
 
-
-// restore previously persisted state.
+// 恢复之前持久化的状态。
 func (rf *Raft) readPersist(data []byte) {
-	if data == nil || len(data) < 1 { // bootstrap without any state?
+	if data == nil || len(data) < 1 { // 没有任何状态的引导程序？
 		return
 	}
-	// Your code here (2C).
-	// Example:
-	// r := bytes.NewBuffer(data)
+	// 这里是你的代码 (2C)。
+	// 例子：
+	// r := bytes.NewBuffer(数据)
 	// d := labgob.NewDecoder(r)
-	// var xxx
-	// var yyy
+	// 变量xxx
+	// 变量 yyy
 	// if d.Decode(&xxx) != nil ||
-	//    d.Decode(&yyy) != nil {
-	//   error...
-	// } else {
-	//   rf.xxx = xxx
-	//   rf.yyy = yyy
+	//
+	//	d.Decode(&yyy) != nil {
+	//	  error...
+	//	}else{
+	//
+	// rf.xxx = xxx
+	// rf.yyy = yyy
 	// }
 }
 
-
-// the service says it has created a snapshot that has
-// all info up to and including index. this means the
-// service no longer needs the log through (and including)
-// that index. Raft should now trim its log as much as possible.
+// 该服务表示它已经创建了一个快照
+// 直到并包括index的所有信息。这意味着
+// 服务不再需要日志通过（并包括）
+// 该索引。 Raft 现在应该尽可能地修剪其日志。
 func (rf *Raft) Snapshot(index int, snapshot []byte) {
 	// Your code here (2D).
 
 }
 
-
-// example RequestVote RPC arguments structure.
-// field names must start with capital letters!
+// RequestVote RPC 参数结构示例。
+// 字段名称必须以大写字母开头！
 type RequestVoteArgs struct {
 	// Your data here (2A, 2B).
 }
 
-// example RequestVote RPC reply structure.
-// field names must start with capital letters!
+// RequestVote RPC 回复结构示例。
+// 字段名称必须以大写字母开头！
 type RequestVoteReply struct {
 	// Your data here (2A).
 }
 
-// example RequestVote RPC handler.
+// 示例 RequestVote RPC 处理程序。
 func (rf *Raft) RequestVote(args *RequestVoteArgs, reply *RequestVoteReply) {
 	// Your code here (2A, 2B).
 }
 
-// example code to send a RequestVote RPC to a server.
-// server is the index of the target server in rf.peers[].
-// expects RPC arguments in args.
-// fills in *reply with RPC reply, so caller should
-// pass &reply.
-// the types of the args and reply passed to Call() must be
-// the same as the types of the arguments declared in the
-// handler function (including whether they are pointers).
+// 将 RequestVote RPC 发送到服务器的示例代码。
+// server 是rf.peers[]中目标服务器的索引。
+// 需要 args 中的 RPC 参数。
+// 用 RPC 回复填写 *reply，所以调用者应该
+// 传递&回复。
+// 传递给 Call() 的参数和回复的类型必须是
+// 与声明的参数类型相同
+// 处理函数（包括它们是否是指针）。
 //
-// The labrpc package simulates a lossy network, in which servers
-// may be unreachable, and in which requests and replies may be lost.
-// Call() sends a request and waits for a reply. If a reply arrives
-// within a timeout interval, Call() returns true; otherwise
-// Call() returns false. Thus Call() may not return for a while.
-// A false return can be caused by a dead server, a live server that
-// can't be reached, a lost request, or a lost reply.
+// labrpc包模拟有损网络，其中服务器
+// 可能无法访问，并且其中请求和回复可能会丢失。
+// Call() 发送请求并等待回复。如果收到回复
+// 在超时间隔内，Call() 返回 true；否则
+// Call() 返回 false。因此 Call() 可能会暂时不会返回。
+// 错误返回可能是由死服务器、活服务器引起的
+// 无法到达、请求丢失或回复丢失。
 //
-// Call() is guaranteed to return (perhaps after a delay) *except* if the
-// handler function on the server side does not return.  Thus there
-// is no need to implement your own timeouts around Call().
+// Call() 保证返回（可能在延迟后）*除非*如果
+// 服务器端的处理函数不返回。于是就有了
+// 无需在 Call() 周围实现您自己的超时。
 //
-// look at the comments in ../labrpc/labrpc.go for more details.
+// 查看 ../labrpc/labrpc.go 中的注释以获取更多详细信息。
 //
-// if you're having trouble getting RPC to work, check that you've
-// capitalized all field names in structs passed over RPC, and
-// that the caller passes the address of the reply struct with &, not
-// the struct itself.
+// 如果您在使 RPC 工作时遇到困难，请检查您是否已
+// 将通过 RPC 传递的结构体中的所有字段名称大写，并且
+// 调用者使用 & 传递回复结构的地址，而不是
+// 结构体本身。
 func (rf *Raft) sendRequestVote(server int, args *RequestVoteArgs, reply *RequestVoteReply) bool {
 	ok := rf.peers[server].Call("Raft.RequestVote", args, reply)
 	return ok
 }
 
-
-// the service using Raft (e.g. a k/v server) wants to start
-// agreement on the next command to be appended to Raft's log. if this
-// server isn't the leader, returns false. otherwise start the
-// agreement and return immediately. there is no guarantee that this
-// command will ever be committed to the Raft log, since the leader
-// may fail or lose an election. even if the Raft instance has been killed,
-// this function should return gracefully.
+// 使用 Raft 的服务（例如 k/v 服务器）想要启动
+// 就附加到 Raft 日志的下一个命令达成一致。如果这
+// 服务器不是领导者，返回 false。否则启动
+// 同意并立即返回。不能保证这
+// 命令将永远被提交到 Raft 日志，因为领导者
+// 可能会失败或输掉选举。即使 Raft 实例已被杀死，
+// 这个函数应该优雅地返回。
 //
-// the first return value is the index that the command will appear at
-// if it's ever committed. the second return value is the current
-// term. the third return value is true if this server believes it is
-// the leader.
+// 第一个返回值是命令将出现的索引
+// 如果它曾经被提交过。第二个返回值是当前值
+// 学期。如果第三个返回值为 true服务器认为是领导人。
+
 func (rf *Raft) Start(command interface{}) (int, int, bool) {
 	index := -1
 	term := -1
@@ -193,19 +189,18 @@ func (rf *Raft) Start(command interface{}) (int, int, bool) {
 
 	// Your code here (2B).
 
-
 	return index, term, isLeader
 }
 
-// the tester doesn't halt goroutines created by Raft after each test,
-// but it does call the Kill() method. your code can use killed() to
-// check whether Kill() has been called. the use of atomic avoids the
-// need for a lock.
+// 测试器在每次测试后不会停止 Raft 创建的 goroutine，
+// 但它确实调用了 Kill() 方法。你的代码可以使用killed()来
+// 检查 Kill() 是否被调用。使用atomic避免了
+// 需要锁。
 //
-// the issue is that long-running goroutines use memory and may chew
-// up CPU time, perhaps causing later tests to fail and generating
-// confusing debug output. any goroutine with a long-running loop
-// should call killed() to check whether it should stop.
+// 问题是长时间运行的 goroutine 使用内存并且可能会消耗内存
+// 占用 CPU 时间，可能会导致后面的测试失败并生成
+// 令人困惑的调试输出。任何具有长时间运行循环的 goroutine
+// 应该调用killed()来检查是否应该停止。
 func (rf *Raft) Kill() {
 	atomic.StoreInt32(&rf.dead, 1)
 	// Your code here, if desired.
@@ -222,7 +217,6 @@ func (rf *Raft) ticker() {
 		// Your code here (2A)
 		// Check if a leader election should be started.
 
-
 		// pause for a random amount of time between 50 and 350
 		// milliseconds.
 		ms := 50 + (rand.Int63() % 300)
@@ -230,15 +224,15 @@ func (rf *Raft) ticker() {
 	}
 }
 
-// the service or tester wants to create a Raft server. the ports
-// of all the Raft servers (including this one) are in peers[]. this
-// server's port is peers[me]. all the servers' peers[] arrays
-// have the same order. persister is a place for this server to
-// save its persistent state, and also initially holds the most
-// recent saved state, if any. applyCh is a channel on which the
-// tester or service expects Raft to send ApplyMsg messages.
-// Make() must return quickly, so it should start goroutines
-// for any long-running work.
+// 服务或测试人员想要创建 Raft 服务器。港口
+// 所有 Raft 服务器（包括这台）都在 peers[] 中。这
+// 服务器的端口是peers[me]。所有服务器的 Peers[] 数组
+// 具有相同的顺序。 persister 是该服务器的一个地方
+// 保存其持久状态，并且最初也保存最多的
+// 最近保存的状态（如果有）。 applyCh 是一个通道，
+// 测试人员或服务期望 Raft 发送 ApplyMsg 消息。
+// Make() 必须快速返回，因此它应该启动 goroutine
+// 对于任何长时间运行的工作。
 func Make(peers []*labrpc.ClientEnd, me int,
 	persister *Persister, applyCh chan ApplyMsg) *Raft {
 	rf := &Raft{}
@@ -248,12 +242,11 @@ func Make(peers []*labrpc.ClientEnd, me int,
 
 	// Your initialization code here (2A, 2B, 2C).
 
-	// initialize from state persisted before a crash
+	// 从崩溃前持续的状态进行初始化
 	rf.readPersist(persister.ReadRaftState())
 
 	// start ticker goroutine to start elections
 	go rf.ticker()
-
 
 	return rf
 }
