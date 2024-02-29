@@ -32,8 +32,52 @@ func (rf *Raft) AppendEntries(args *AppendEntriesArgs, reply *AppendEntriesReply
 	rf.changeState(Follower)
 	rf.resetElectionTimer()
 	// reply.Success = true
+
+	_, lastLogIndex := rf.getLastLogTermAndIndex()
+	//先判断两边，再判断刚好从快照开始，再判断中间的情况
+	if args.PrevLogIndex < rf.lastSnapshotIndex {
+		//1.要插入的前一个index小于快照index，几乎不会发生
+		reply.Success = false
+		reply.NextLogIndex = rf.lastSnapshotIndex + 1
+	} else if args.PrevLogIndex > lastLogIndex {
+		//2. 要插入的前一个index大于最后一个log的index，说明中间还有log
+		reply.Success = false
+		reply.NextLogIndex = lastLogIndex + 1
+	} else if args.PrevLogIndex == rf.lastSnapshotIndex {
+		//3. 要插入的前一个index刚好等于快照的index，说明可以全覆盖，但要判断是否是全覆盖
+		if rf.isOutOfArgsAppendEntries(args) {
+			reply.Success = false
+			reply.NextLogIndex = 0 //=0代表着插入会导致乱序
+		} else {
+			reply.Success = true
+			rf.logs = append(rf.logs[:1], args.Entries...)
+			_, currentLogIndex := rf.getLastLogTermAndIndex()
+			reply.NextLogIndex = currentLogIndex + 1
+		}
+	} else if args.PrevLogTerm == rf.logs[rf.getStoreIndex(args.PrevLogIndex)].Term {
+		//4. 中间的情况：索引处的两个term相同
+		if rf.isOutOfArgsAppendEntries(args) {
+			reply.Success = false
+			reply.NextLogIndex = 0
+		} else {
+			reply.Success = true
+			rf.logs = append(rf.logs[:rf.getStoreIndex(args.PrevLogIndex)+1], args.Entries...)
+			_, currentLogIndex := rf.getLastLogTermAndIndex()
+			reply.NextLogIndex = currentLogIndex + 1
+		}
+	} else {
+		//5. 中间的情况：索引处的两个term不相同，跳过一个term
+		term := rf.logs[rf.getStoreIndex(args.PrevLogIndex)].Term
+		index := args.PrevLogIndex
+		for index > rf.commitIndex && index > rf.lastSnapshotIndex && rf.logs[rf.getStoreIndex(index)].Term == term {
+			index--
+		}
+		reply.Success = false
+		reply.NextLogIndex = index + 1
+	}
+
 	asdasdasd
-	
+
 	rf.persist()
 	DPrintf("%v role: %v, get appendentries finish,args = %v,reply = %+v", rf.me, rf.state, *args, *reply)
 	rf.mu.Unlock()

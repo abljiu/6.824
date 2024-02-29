@@ -89,3 +89,13 @@ func (rf *Raft) getStoreIndex(index int) int {
 	}
 	return StoreIndex
 }
+
+// 判断当前raft的日志记录是否超过发送过来的日志记录
+func (rf *Raft) isOutOfArgsAppendEntries(args *AppendEntriesArgs) bool {
+	argsLastLogIndex := args.PrevLogIndex + len(args.Entries)
+	lastLogTerm, lastLogIndex := rf.getLastLogTermAndIndex()
+	if lastLogTerm == args.Term && argsLastLogIndex < lastLogIndex {
+		return true
+	}
+	return false
+}
