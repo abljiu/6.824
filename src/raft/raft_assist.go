@@ -73,7 +73,6 @@ func (rf *Raft) resetAllAppendEntriesTimerZero() {
 		timer.Stop()
 		timer.Reset(0)
 	}
-
 }
 
 // 返回当前状态机的最后一条日志的任期和索引

@@ -76,8 +76,6 @@ func (rf *Raft) AppendEntries(args *AppendEntriesArgs, reply *AppendEntriesReply
 		reply.NextLogIndex = index + 1
 	}
 
-	asdasdasd
-
 	rf.persist()
 	DPrintf("%v role: %v, get appendentries finish,args = %v,reply = %+v", rf.me, rf.state, *args, *reply)
 	rf.mu.Unlock()
