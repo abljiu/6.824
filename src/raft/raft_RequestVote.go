@@ -64,7 +64,7 @@ func (rf *Raft) RequestVote(args *RequestVoteArgs, reply *RequestVoteReply) {
 	rf.changeState(Follower)
 	rf.resetElectionTimer()
 
-	DPrintf("%v, role: %v,voteFor: %v", rf.me, rf.state, rf.votedFor)
+	DPrintf("%v, state: %v,voteFor: %v", rf.me, rf.state, rf.votedFor)
 }
 
 // 发送选举请求
@@ -91,7 +91,7 @@ func (rf *Raft) sendRequestVote(server int, args *RequestVoteArgs, reply *Reques
 
 	select {
 	case <-rpcTimer.C:
-		DPrintf("%v role: %v, send request vote to peer %v TIME OUT!!!", rf.me, rf.state, server)
+		DPrintf("%v state: %v, send request vote to peer %v TIME OUT!!!", rf.me, rf.state, server)
 		return
 	case <-ch:
 		return

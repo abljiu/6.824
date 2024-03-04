@@ -80,7 +80,7 @@ func (rf *Raft) getLastLogTermAndIndex() (int, int) {
 	return rf.logs[len(rf.logs)-1].Term, rf.lastSnapshotIndex + len(rf.logs) - 1
 }
 
-// 获取当前节点存储位置的索引
+// 获取当前节点应该的存储位置的索引
 func (rf *Raft) getStoreIndex(index int) int {
 	StoreIndex := index - rf.lastSnapshotIndex
 	if StoreIndex < 0 {

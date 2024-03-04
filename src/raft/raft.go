@@ -14,7 +14,7 @@ package raft
 import (
 	//	"bytes"
 	// "flag"
-	"go/doc/comment"
+	// "go/doc/comment"
 	"sync"
 	"time"
 
@@ -81,10 +81,10 @@ type Raft struct {
 
 	electionTimer       *time.Timer   //自己的选举计时器
 	appendEntriesTimers []*time.Timer //leader向follower发送心跳的的计时器
-	applyTimer          *time.Timer   //
+	applyTimer          *time.Timer   //自己的应用定时器
 	stopCh              chan struct{} //控制后台线程推出的chan
 	applyCh             chan ApplyMsg //提交应用的日志的chan
-	notifyApplyCh       chan struct{} //
+	notifyApplyCh       chan struct{} //提醒应用的chan
 
 	lastSnapshotIndex int // 快照中最后一条日志的index，是真正的index，不是存储在logs中的index
 	lastSnapshotTerm  int
@@ -224,7 +224,7 @@ func (rf *Raft) startElection() {
 	}
 
 	rf.changeState(Candidate)
-	DPrintf("%v role %v,start election,term: %v", rf.me, rf.state, rf.currentTerm)
+	DPrintf("%v state %v,start election,term: %v", rf.me, rf.state, rf.currentTerm)
 
 	lastLogTerm, lastLogIndex := rf.getLastLogTermAndIndex()
 	args := RequestVoteArgs{
@@ -285,45 +285,13 @@ func (rf *Raft) startElection() {
 			}
 			rf.persist()
 			rf.mu.Unlock()
-			DPrintf("%v current role: %v", rf.me, rf.state)
+			DPrintf("%v current state: %v", rf.me, rf.state)
 		} else if resCount == allCount || resCount-grantedCount > allCount/2 {
 			DPrintf("grant fail! grantedCount <= len/2:count:%d", grantedCount)
 			return
 		}
 	}
 
-}
-
-func (rf *Raft) startApplyLogs() {
-	defer rf.applyTimer.Reset(ApplyInterval)
-
-	rf.mu.Lock()
-	var msgs []ApplyMsg
-	if rf.lastApplied < rf.lastSnapshotIndex {
-		//此时要安装快照，命令在接收到快照时就发布过了，等待处理
-		msgs = make([]ApplyMsg, 0)
-	} else if rf.commitIndex <= rf.lastApplied {
-		//snapShot 没有更新 commitindex
-		msgs = make([]ApplyMsg, 0)
-	} else {
-		//获取所有提交但是没有应用的日志
-		msgs = make([]ApplyMsg, 0, rf.commitIndex-rf.lastApplied)
-		for i := rf.lastApplied + 1; i <= rf.commitIndex; i++ {
-			msgs = append(msgs, ApplyMsg{
-				CommandValid: true,
-				Command:      rf.logs[rf.getStoreIndex(i)].Command,
-				CommandIndex: i,
-			})
-		}
-		rf.mu.Unlock()
-		for _, msg := range msgs {
-			rf.applyCh <- msg
-			rf.mu.Lock()
-			rf.lastApplied = msg.CommandIndex
-			rf.mu.Unlock()
-		}
-
-	}
 }
 
 // 创建计时器
@@ -382,9 +350,18 @@ func Make(peers []*labrpc.ClientEnd, me int,
 	rf.state = Follower
 	rf.currentTerm = 0
 	rf.votedFor = -1
-	rf.logs = make([]LogEntry, 1)
+	rf.logs = make([]LogEntry, 1) //0下标存储快照
+	rf.commitIndex = 0
+	rf.lastApplied = 0
+
+	rf.lastSnapshotIndex = 0
+	rf.lastSnapshotTerm = 0
+	
 	rf.nextIndex = make([]int, len(rf.peers))
 	rf.matchIndex = make([]int, len(rf.peers))
+
+	// 从崩溃前持续的状态进行初始化
+	rf.readPersist(persister.ReadRaftState())
 
 	rf.electionTimer = time.NewTimer(rf.getElectionTimeout())
 	rf.appendEntriesTimers = make([]*time.Timer, len(rf.peers))
@@ -392,8 +369,9 @@ func Make(peers []*labrpc.ClientEnd, me int,
 		rf.appendEntriesTimers[i] = time.NewTimer(HeartBeatInterval)
 	}
 	rf.stopCh = make(chan struct{})
-	// 从崩溃前持续的状态进行初始化
-	rf.readPersist(persister.ReadRaftState())
+	rf.applyTimer = time.NewTimer(ApplyInterval)
+	rf.applyCh = applyCh
+	rf.notifyApplyCh = make(chan struct{}, 100)
 
 	// start ticker goroutine to start elections
 	go rf.ticker()

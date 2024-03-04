@@ -20,14 +20,17 @@ type AppendEntriesReply struct {
 	NextLogIndex int  //下一条日志的索引
 }
 
+// 处理AppendEntries
 func (rf *Raft) AppendEntries(args *AppendEntriesArgs, reply *AppendEntriesReply) {
 	rf.mu.Lock()
 	DPrintf("%v receive a appendEntries: %+v", rf.me, args)
 	reply.Term = rf.currentTerm
+	//请求的任期小于自己 不处理
 	if args.Term < rf.currentTerm {
 		rf.mu.Unlock()
 		return
 	}
+
 	rf.currentTerm = args.Term
 	rf.changeState(Follower)
 	rf.resetElectionTimer()
@@ -66,7 +69,7 @@ func (rf *Raft) AppendEntries(args *AppendEntriesArgs, reply *AppendEntriesReply
 			reply.NextLogIndex = currentLogIndex + 1
 		}
 	} else {
-		//5. 中间的情况：索引处的两个term不相同，跳过一个term
+		//5. 中间的情况：索引处的两个term不相同，向前回溯
 		term := rf.logs[rf.getStoreIndex(args.PrevLogIndex)].Term
 		index := args.PrevLogIndex
 		for index > rf.commitIndex && index > rf.lastSnapshotIndex && rf.logs[rf.getStoreIndex(index)].Term == term {
@@ -75,9 +78,17 @@ func (rf *Raft) AppendEntries(args *AppendEntriesArgs, reply *AppendEntriesReply
 		reply.Success = false
 		reply.NextLogIndex = index + 1
 	}
+	//判断是否有commit数据
+	if reply.Success {
+		DPrintf("%v current commit: %v,try to commit %v", rf.me, rf.commitIndex, args.LeaderCommit)
+		if rf.commitIndex < args.LeaderCommit {
+			rf.commitIndex = args.LeaderCommit
+			rf.notifyApplyCh <- struct{}{}
+		}
+	}
 
 	rf.persist()
-	DPrintf("%v role: %v, get appendentries finish,args = %v,reply = %+v", rf.me, rf.state, *args, *reply)
+	DPrintf("%v state: %v, get appendentries finish,args = %v,reply = %+v", rf.me, rf.state, *args, *reply)
 	rf.mu.Unlock()
 }
 
@@ -88,6 +99,7 @@ func (rf *Raft) sendAppendEntries(peerId int) {
 	}
 
 	rf.mu.Lock()
+	//只有leader才能发送
 	if rf.state != Leader {
 		rf.resetAppendEntriesTimer(peerId)
 		rf.mu.Unlock()
@@ -95,6 +107,7 @@ func (rf *Raft) sendAppendEntries(peerId int) {
 	}
 	DPrintf("%v send append entries to peer %v", rf.me, peerId)
 
+	//获取对端的参数
 	prevLogIndex, prevLogTerm, logEntries := rf.getAppendLogs(peerId)
 	args := AppendEntriesArgs{
 		Term:         rf.currentTerm,
@@ -129,13 +142,14 @@ func (rf *Raft) sendAppendEntries(peerId int) {
 
 	select {
 	case <-rpcTimer.C:
-		DPrintf("%v role: %v, send append entries to peer %v TIME OUT!!!", rf.me, rf.state, peerId)
+		DPrintf("%v state: %v, send append entries to peer %v TIME OUT!!!", rf.me, rf.state, peerId)
 	case <-ch:
 	}
 
-	DPrintf("%v role: %v, send append entries to peer finish,%v,args = %+v,reply = %+v", rf.me, rf.state, peerId, args, reply)
+	DPrintf("%v state: %v, send append entries to peer finish,%v,args = %+v,reply = %+v", rf.me, rf.state, peerId, args, reply)
 
 	rf.mu.Lock()
+	//对端的任期大于自己
 	if reply.Term > rf.currentTerm {
 		rf.changeState(Follower)
 		rf.currentTerm = reply.Term
@@ -145,6 +159,7 @@ func (rf *Raft) sendAppendEntries(peerId int) {
 		return
 	}
 
+	//如果自己不是leader或者任期改变了 立即退出
 	if rf.state != Leader || rf.currentTerm != args.Term {
 		rf.mu.Unlock()
 		return
@@ -157,19 +172,40 @@ func (rf *Raft) sendAppendEntries(peerId int) {
 			rf.nextIndex[peerId] = reply.NextLogIndex
 			rf.matchIndex[peerId] = reply.NextLogIndex - 1
 		}
-		//如果发送的日志是自己的任期的日志
+		//如果发送的日志是自己的任期的日志 就尝试commit
 		if len(args.Entries) > 0 && args.Entries[len(args.Entries)-1].Term == rf.currentTerm {
 			rf.tryCommitLog()
 		}
 	}
+
+	//响应失败
+	if reply.NextLogIndex != 0 {
+		if reply.NextLogIndex > rf.lastSnapshotIndex {
+			rf.nextIndex[peerId] = reply.NextLogIndex
+			//为了一致性，立马发送
+			rf.resetAppendEntriesTimerZero(peerId)
+		} else {
+			//发送快照
+			// go rf.sendInstallSnapshotToPeer(peerId)
+		}
+		rf.mu.Unlock()
+		return
+	} else {
+		//reply.NextLogIndex = 0
+	}
+
 	rf.mu.Unlock()
 }
 
 // 获取要发送给对应节点的日志信息
 func (rf *Raft) getAppendLogs(peerId int) (prevLogIndex int, prevLogTerm int, logEntries []LogEntry) {
+	//获取对端下一个要复制的index
 	nextIndex := rf.nextIndex[peerId]
+	//获取自己的最新日志和任期
 	lastLogTerm, lastLogIndex := rf.getLastLogTermAndIndex()
+	//对端的nextindex小于等于快照index或者大于自己的最新日志
 	if nextIndex <= rf.lastSnapshotIndex || nextIndex > lastLogIndex {
+		//对应节点达到最新 发送空日志
 		prevLogTerm = lastLogTerm
 		prevLogIndex = lastLogIndex
 		return
@@ -198,7 +234,7 @@ func (rf *Raft) tryCommitLog() {
 			if m >= i {
 				//该节点已经复制成功
 				count += 1
-				//提交数大于一半
+				//复制数大于一半
 				if count > len(rf.peers)/2 {
 					rf.commitIndex = i
 					hasCommit = true
@@ -213,5 +249,43 @@ func (rf *Raft) tryCommitLog() {
 	}
 	if hasCommit {
 		rf.notifyApplyCh <- struct{}{}
+	}
+}
+
+// 处理等待应用的日志
+func (rf *Raft) startApplyLogs() {
+	defer rf.applyTimer.Reset(ApplyInterval)
+
+	rf.mu.Lock()
+	var msgs []ApplyMsg
+	if rf.lastApplied < rf.lastSnapshotIndex {
+		//此时要安装快照，命令在接收到快照时就发布过了，等待处理
+		msgs = make([]ApplyMsg, 0)
+		rf.mu.Unlock()
+		return
+	} else if rf.commitIndex <= rf.lastApplied {
+		//snapShot 没有更新 commitindex
+		msgs = make([]ApplyMsg, 0)
+		rf.mu.Unlock()
+		return
+	} else {
+		//获取所有提交但是没有应用的日志
+		msgs = make([]ApplyMsg, 0, rf.commitIndex-rf.lastApplied)
+		for i := rf.lastApplied + 1; i <= rf.commitIndex; i++ {
+			msgs = append(msgs, ApplyMsg{
+				CommandValid: true,
+				Command:      rf.logs[rf.getStoreIndex(i)].Command,
+				CommandIndex: i,
+			})
+		}
+		rf.mu.Unlock()
+		//将获取到的日志加入applych
+		for _, msg := range msgs {
+			rf.applyCh <- msg
+			rf.mu.Lock()
+			rf.lastApplied = msg.CommandIndex
+			rf.mu.Unlock()
+		}
+
 	}
 }
