@@ -222,6 +222,7 @@ func TestFollowerFailure2B(t *testing.T) {
 	}
 
 	cfg.end()
+	
 }
 
 // test just failure of leaders.

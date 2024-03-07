@@ -63,7 +63,7 @@ func (rf *Raft) RequestVote(args *RequestVoteArgs, reply *RequestVoteReply) {
 	reply.VoteGranted = true
 	rf.changeState(Follower)
 	rf.resetElectionTimer()
-
+	rf.persist()
 	DPrintf("%v, state: %v,voteFor: %v", rf.me, rf.state, rf.votedFor)
 }
 

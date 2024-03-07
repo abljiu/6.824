@@ -1,6 +1,7 @@
 package raft
 
 import (
+	"fmt"
 	"time"
 )
 
@@ -19,11 +20,11 @@ type AppendEntriesReply struct {
 	NextLogTerm  int  //下一条日志的任期
 	NextLogIndex int  //下一条日志的索引
 }
-
+//77777
 // 处理AppendEntries
 func (rf *Raft) AppendEntries(args *AppendEntriesArgs, reply *AppendEntriesReply) {
 	rf.mu.Lock()
-	DPrintf("%v receive a appendEntries: %+v", rf.me, args)
+	// DPrintf("%v receive a appendEntries: %+v", rf.me, args)
 	reply.Term = rf.currentTerm
 	//请求的任期小于自己 不处理
 	if args.Term < rf.currentTerm {
@@ -78,6 +79,7 @@ func (rf *Raft) AppendEntries(args *AppendEntriesArgs, reply *AppendEntriesReply
 		reply.Success = false
 		reply.NextLogIndex = index + 1
 	}
+
 	//判断是否有commit数据
 	if reply.Success {
 		DPrintf("%v current commit: %v,try to commit %v", rf.me, rf.commitIndex, args.LeaderCommit)
@@ -87,11 +89,42 @@ func (rf *Raft) AppendEntries(args *AppendEntriesArgs, reply *AppendEntriesReply
 		}
 	}
 
+	if !reply.Success {
+		fmt.Printf("%v state: %v, get appendentries finish,args = %v,reply = %+v \n", rf.me, rf.state, *args, *reply)
+	}
 	rf.persist()
 	DPrintf("%v state: %v, get appendentries finish,args = %v,reply = %+v", rf.me, rf.state, *args, *reply)
 	rf.mu.Unlock()
 }
+//777777
+func (rf *Raft) sendAppend(args *AppendEntriesArgs, reply *AppendEntriesReply, peerId int) {
+	rpcTimer := time.NewTimer(RPCTimeout)
+	defer rpcTimer.Stop()
 
+	ch := make(chan bool, 1)
+	go func() {
+		//尝试10次+
+		for i := 0; i < 10 && !rf.killed(); i++ {
+			ok := rf.peers[peerId].Call("Raft.AppendEntries", args, reply)
+			if !ok {
+				time.Sleep(time.Millisecond * 10)
+				continue
+			} else {
+				ch <- ok
+				return
+			}
+		}
+	}()
+
+	select {
+	case <-rpcTimer.C:
+		DPrintf("%v state: %v, send append entries to peer %v TIME OUT!!!", rf.me, rf.state, peerId)
+		return
+	case <-ch:
+		return
+	}
+}
+//77777
 // 发送添加请求
 func (rf *Raft) sendAppendEntries(peerId int) {
 	if rf.killed() {
@@ -122,30 +155,7 @@ func (rf *Raft) sendAppendEntries(peerId int) {
 	rf.mu.Unlock()
 
 	//发送rpc
-	rpcTimer := time.NewTimer(RPCTimeout)
-	defer rpcTimer.Stop()
-
-	ch := make(chan bool, 1)
-	go func() {
-		//尝试10次
-		for i := 0; i < 10 && !rf.killed(); i++ {
-			ok := rf.peers[peerId].Call("Raft.AppendEntries", &args, &reply)
-			if !ok {
-				time.Sleep(time.Millisecond * 10)
-				continue
-			} else {
-				ch <- ok
-				return
-			}
-		}
-	}()
-
-	select {
-	case <-rpcTimer.C:
-		DPrintf("%v state: %v, send append entries to peer %v TIME OUT!!!", rf.me, rf.state, peerId)
-	case <-ch:
-	}
-
+	rf.sendAppend(&args, &reply, peerId)
 	DPrintf("%v state: %v, send append entries to peer finish,%v,args = %+v,reply = %+v", rf.me, rf.state, peerId, args, reply)
 
 	rf.mu.Lock()
@@ -176,6 +186,9 @@ func (rf *Raft) sendAppendEntries(peerId int) {
 		if len(args.Entries) > 0 && args.Entries[len(args.Entries)-1].Term == rf.currentTerm {
 			rf.tryCommitLog()
 		}
+		rf.persist()
+		rf.mu.Unlock()
+		return
 	}
 
 	//响应失败
@@ -186,17 +199,19 @@ func (rf *Raft) sendAppendEntries(peerId int) {
 			rf.resetAppendEntriesTimerZero(peerId)
 		} else {
 			//发送快照
-			// go rf.sendInstallSnapshotToPeer(peerId)
+			// fmt.Println("aaaaaaaaaaaaa")
+			go rf.sendInstallSnapshotToPeer(peerId)
 		}
 		rf.mu.Unlock()
 		return
 	} else {
-		//reply.NextLogIndex = 0
+		reply.NextLogIndex = 0
 	}
 
 	rf.mu.Unlock()
 }
 
+// 777
 // 获取要发送给对应节点的日志信息
 func (rf *Raft) getAppendLogs(peerId int) (prevLogIndex int, prevLogTerm int, logEntries []LogEntry) {
 	//获取对端下一个要复制的index
@@ -222,7 +237,7 @@ func (rf *Raft) getAppendLogs(peerId int) (prevLogIndex int, prevLogTerm int, lo
 
 	return
 }
-
+//7777
 // 尝试提交日志
 func (rf *Raft) tryCommitLog() {
 	_, lastLogIndex := rf.getLastLogTermAndIndex()
@@ -251,7 +266,7 @@ func (rf *Raft) tryCommitLog() {
 		rf.notifyApplyCh <- struct{}{}
 	}
 }
-
+//7777
 // 处理等待应用的日志
 func (rf *Raft) startApplyLogs() {
 	defer rf.applyTimer.Reset(ApplyInterval)
@@ -261,13 +276,12 @@ func (rf *Raft) startApplyLogs() {
 	if rf.lastApplied < rf.lastSnapshotIndex {
 		//此时要安装快照，命令在接收到快照时就发布过了，等待处理
 		msgs = make([]ApplyMsg, 0)
-		rf.mu.Unlock()
-		return
+		// rf.mu.Unlock()
+		// return
 	} else if rf.commitIndex <= rf.lastApplied {
 		//snapShot 没有更新 commitindex
 		msgs = make([]ApplyMsg, 0)
-		rf.mu.Unlock()
-		return
+		// return
 	} else {
 		//获取所有提交但是没有应用的日志
 		msgs = make([]ApplyMsg, 0, rf.commitIndex-rf.lastApplied)
@@ -278,14 +292,14 @@ func (rf *Raft) startApplyLogs() {
 				CommandIndex: i,
 			})
 		}
-		rf.mu.Unlock()
-		//将获取到的日志加入applych
-		for _, msg := range msgs {
-			rf.applyCh <- msg
-			rf.mu.Lock()
-			rf.lastApplied = msg.CommandIndex
-			rf.mu.Unlock()
-		}
-
 	}
+	rf.mu.Unlock()
+	//将获取到的日志加入applych
+	for _, msg := range msgs {
+		rf.applyCh <- msg
+		rf.mu.Lock()
+		rf.lastApplied = msg.CommandIndex
+		rf.mu.Unlock()
+	}
+
 }

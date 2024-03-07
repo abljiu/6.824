@@ -354,8 +354,8 @@ func Make(peers []*labrpc.ClientEnd, me int,
 	rf.commitIndex = 0
 	rf.lastApplied = 0
 
-	rf.lastSnapshotIndex = 0
-	rf.lastSnapshotTerm = 0
+	// rf.lastSnapshotIndex = 0
+	// rf.lastSnapshotTerm = 0
 	
 	rf.nextIndex = make([]int, len(rf.peers))
 	rf.matchIndex = make([]int, len(rf.peers))
@@ -374,7 +374,7 @@ func Make(peers []*labrpc.ClientEnd, me int,
 	rf.notifyApplyCh = make(chan struct{}, 100)
 
 	// start ticker goroutine to start elections
-	go rf.ticker()
+	 rf.ticker()
 
 	return rf
 }
