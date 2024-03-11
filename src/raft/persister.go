@@ -1,20 +1,20 @@
 package raft
 
 //
-// support for Raft and kvraft to save persistent
-// Raft state (log &c) and k/v server snapshots.
+// 支持Raft和kvraft保存持久化
+// Raft 状态（日志 &c）和 k/v 服务器快照。
 //
-// we will use the original persister.go to test your code for grading.
-// so, while you can modify this code to help you debug, please
-// test with the original before submitting.
+// 我们将使用原始的 persister.go 来测试您的代码以进行评分。
+// 因此，虽然您可以修改此代码来帮助您调试，但请
+// 在提交之前用原始文件进行测试。
 //
 
 import "sync"
 
 type Persister struct {
 	mu        sync.Mutex
-	raftstate []byte
-	snapshot  []byte
+	raftstate []byte//当前raft节点的状态
+	snapshot  []byte//当前raft的快照
 }
 
 func MakePersister() *Persister {
@@ -48,8 +48,8 @@ func (ps *Persister) RaftStateSize() int {
 	return len(ps.raftstate)
 }
 
-// Save both Raft state and K/V snapshot as a single atomic action,
-// to help avoid them getting out of sync.
+// 将 Raft 状态和 K/V 快照保存为单个原子操作，
+// 帮助避免它们不同步。
 func (ps *Persister) Save(raftstate []byte, snapshot []byte) {
 	ps.mu.Lock()
 	defer ps.mu.Unlock()

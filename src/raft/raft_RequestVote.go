@@ -27,6 +27,7 @@ func (rf *Raft) RequestVote(args *RequestVoteArgs, reply *RequestVoteReply) {
 	reply.VoteGranted = false
 
 	if rf.currentTerm > args.Term {
+	//如果自己的任期大直接返回
 		return
 	} else if rf.currentTerm == args.Term {
 		if rf.state == Leader {
@@ -53,7 +54,7 @@ func (rf *Raft) RequestVote(args *RequestVoteArgs, reply *RequestVoteReply) {
 		reply.Term = rf.currentTerm
 	}
 
-	//判断日志是否完整，如果不完整，则拒绝投票
+	//判断谁的日志更新
 	if lastLogTerm > args.LastLogTerm || (lastLogTerm == args.LastLogTerm && lastLogIndex > args.LastLogIndex) {
 		return
 	}
@@ -95,6 +96,90 @@ func (rf *Raft) sendRequestVote(server int, args *RequestVoteArgs, reply *Reques
 		return
 	case <-ch:
 		return
+	}
+
+}
+
+// 开始选举
+func (rf *Raft) startElection() {
+	rf.mu.Lock()
+	//刷新选举时间
+	rf.resetElectionTimer()
+	if rf.state == Leader {
+		rf.mu.Unlock()
+		return
+	}
+
+	rf.changeState(Candidate)
+	DPrintf("%v state %v,start election,term: %v", rf.me, rf.state, rf.currentTerm)
+
+	//获取自己节点的信息
+	lastLogTerm, lastLogIndex := rf.getLastLogTermAndIndex()
+	args := RequestVoteArgs{
+		CandidateId:  rf.me,
+		Term:         rf.currentTerm,
+		LastLogTerm:  lastLogTerm,
+		LastLogIndex: lastLogIndex,
+	}
+	rf.persist()
+	rf.mu.Unlock()
+
+	allCount := len(rf.peers)
+	grantedCount := 1
+	resCount := 1
+	grantedChan := make(chan bool, len(rf.peers)-1)
+	for i := 0; i < allCount; i++ {
+		if i == rf.me {
+			continue
+		}
+		//对其他节点发送rpc
+		go func(grantedChan chan bool, index int) {
+			reply := RequestVoteReply{}
+			rf.sendRequestVote(index, &args, &reply)
+			grantedChan <- reply.VoteGranted
+			if reply.Term > args.Term {
+				rf.mu.Lock()
+				if reply.Term > rf.currentTerm {
+					//放弃选举
+					rf.currentTerm = reply.Term
+					rf.changeState(Follower)
+					rf.votedFor = -1
+					rf.resetElectionTimer()
+					rf.persist()
+				}
+				rf.mu.Unlock()
+			}
+		}(grantedChan, i)
+
+	}
+
+	for rf.state == Candidate {
+		//统计投票
+		flag := <-grantedChan
+		resCount++
+		if flag {
+			grantedCount++
+		}
+		DPrintf("vote: %v, allCount: %v, resCount: %v, grantedCount: %v", flag, allCount, resCount, grantedCount)
+
+		if grantedCount > allCount/2 {
+			//竞选成功
+			rf.mu.Lock()
+			DPrintf("before try change to leader,count:%d, args:%+v, currentTerm: %v, argsTerm: %v", grantedCount, args, rf.currentTerm, args.Term)
+			if rf.state == Candidate && rf.currentTerm == args.Term {
+				rf.changeState(Leader)
+			}
+			if rf.state == Leader {
+				//刷新append倒计时
+				rf.resetAllAppendEntriesTimerZero()
+			}
+			rf.persist()
+			rf.mu.Unlock()
+			DPrintf("%v current state: %v", rf.me, rf.state)
+		} else if resCount == allCount || resCount-grantedCount > allCount/2 {
+			DPrintf("grant fail! grantedCount <= len/2:count:%d", grantedCount)
+			return
+		}
 	}
 
 }

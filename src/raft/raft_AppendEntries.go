@@ -1,7 +1,7 @@
 package raft
 
 import (
-	"fmt"
+	// "fmt"
 	"time"
 )
 
@@ -20,7 +20,7 @@ type AppendEntriesReply struct {
 	NextLogTerm  int  //下一条日志的任期
 	NextLogIndex int  //下一条日志的索引
 }
-//77777
+
 // 处理AppendEntries
 func (rf *Raft) AppendEntries(args *AppendEntriesArgs, reply *AppendEntriesReply) {
 	rf.mu.Lock()
@@ -89,14 +89,15 @@ func (rf *Raft) AppendEntries(args *AppendEntriesArgs, reply *AppendEntriesReply
 		}
 	}
 
-	if !reply.Success {
-		fmt.Printf("%v state: %v, get appendentries finish,args = %v,reply = %+v \n", rf.me, rf.state, *args, *reply)
-	}
+	// if !reply.Success {
+	// 	fmt.Printf("%v state: %v, get appendentries finish,args = %v,reply = %+v \n", rf.me, rf.state, *args, *reply)
+	// }
 	rf.persist()
 	DPrintf("%v state: %v, get appendentries finish,args = %v,reply = %+v", rf.me, rf.state, *args, *reply)
 	rf.mu.Unlock()
 }
-//777777
+
+
 func (rf *Raft) sendAppend(args *AppendEntriesArgs, reply *AppendEntriesReply, peerId int) {
 	rpcTimer := time.NewTimer(RPCTimeout)
 	defer rpcTimer.Stop()
@@ -124,7 +125,7 @@ func (rf *Raft) sendAppend(args *AppendEntriesArgs, reply *AppendEntriesReply, p
 		return
 	}
 }
-//77777
+
 // 发送添加请求
 func (rf *Raft) sendAppendEntries(peerId int) {
 	if rf.killed() {
@@ -211,7 +212,6 @@ func (rf *Raft) sendAppendEntries(peerId int) {
 	rf.mu.Unlock()
 }
 
-// 777
 // 获取要发送给对应节点的日志信息
 func (rf *Raft) getAppendLogs(peerId int) (prevLogIndex int, prevLogTerm int, logEntries []LogEntry) {
 	//获取对端下一个要复制的index
@@ -237,7 +237,7 @@ func (rf *Raft) getAppendLogs(peerId int) (prevLogIndex int, prevLogTerm int, lo
 
 	return
 }
-//7777
+
 // 尝试提交日志
 func (rf *Raft) tryCommitLog() {
 	_, lastLogIndex := rf.getLastLogTermAndIndex()
@@ -266,7 +266,7 @@ func (rf *Raft) tryCommitLog() {
 		rf.notifyApplyCh <- struct{}{}
 	}
 }
-//7777
+
 // 处理等待应用的日志
 func (rf *Raft) startApplyLogs() {
 	defer rf.applyTimer.Reset(ApplyInterval)

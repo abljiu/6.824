@@ -1,12 +1,11 @@
 package labgob
 
 //
-// trying to send non-capitalized fields over RPC produces a range of
-// misbehavior, including both mysterious incorrect computation and
-// outright crashes. so this wrapper around Go's encoding/gob warns
-// about non-capitalized field names.
+// 尝试通过 RPC 发送非大写字段会产生一系列
+// 不当行为，包括神秘的错误计算和
+// 彻底崩溃。 所以这个围绕 Go 的编码/gob 的包装器发出警告
+// 关于非大写字段名称。
 //
-
 import "encoding/gob"
 import "io"
 import "reflect"
@@ -112,13 +111,11 @@ func checkType(t reflect.Type) {
 	}
 }
 
-//
-// warn if the value contains non-default values,
-// as it would if one sent an RPC but the reply
-// struct was already modified. if the RPC reply
-// contains default values, GOB won't overwrite
-// the non-default value.
-//
+// 如果该值包含非默认值，则发出警告，
+// 就像发送 RPC 但回复一样
+// 结构已经被修改。 如果 RPC 回复
+// 包含默认值，GOB 不会覆盖
+// 非默认值。
 func checkDefault(value interface{}) {
 	if value == nil {
 		return
@@ -163,9 +160,9 @@ func checkDefault1(value reflect.Value, depth int, name string) {
 				if what == "" {
 					what = t.Name()
 				}
-				// this warning typically arises if code re-uses the same RPC reply
-				// variable for multiple RPC calls, or if code restores persisted
-				// state into variable that already have non-default values.
+				// 如果代码重复使用相同的 RPC 回复，通常会出现此警告
+				// 多个 RPC 调用的变量，或者如果代码恢复持久化
+				// 状态到已经有非默认值的变量。
 				fmt.Printf("labgob warning: Decoding into a non-default variable/field %v may not work\n",
 					what)
 			}
