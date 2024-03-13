@@ -97,7 +97,6 @@ func (rf *Raft) AppendEntries(args *AppendEntriesArgs, reply *AppendEntriesReply
 	rf.mu.Unlock()
 }
 
-
 func (rf *Raft) sendAppend(args *AppendEntriesArgs, reply *AppendEntriesReply, peerId int) {
 	rpcTimer := time.NewTimer(RPCTimeout)
 	defer rpcTimer.Stop()
@@ -276,12 +275,13 @@ func (rf *Raft) startApplyLogs() {
 	if rf.lastApplied < rf.lastSnapshotIndex {
 		//此时要安装快照，命令在接收到快照时就发布过了，等待处理
 		msgs = make([]ApplyMsg, 0)
-		// rf.mu.Unlock()
-		// return
+		rf.mu.Unlock()
+		//读取快照
+		rf.CondInstallSnapshot(rf.lastSnapshotTerm, rf.lastSnapshotIndex, rf.persister.snapshot)
+		return
 	} else if rf.commitIndex <= rf.lastApplied {
 		//snapShot 没有更新 commitindex
 		msgs = make([]ApplyMsg, 0)
-		// return
 	} else {
 		//获取所有提交但是没有应用的日志
 		msgs = make([]ApplyMsg, 0, rf.commitIndex-rf.lastApplied)

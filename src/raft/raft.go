@@ -46,7 +46,8 @@ const (
 //
 // 在 2D 部分中，您需要发送其他类型的消息（例如，
 // snapshots) 在 applyCh 上，但将 CommandValid 设置为 false
-// 其他用途。
+// 其他用途
+
 type ApplyMsg struct {
 	CommandValid bool
 	Command      interface{}
@@ -108,15 +109,15 @@ func (rf *Raft) GetState() (int, bool) {
 }
 
 func (rf *Raft) getPersistData() []byte {
-	w := new(bytes.Buffer)
-	e := labgob.NewEncoder(w)
+	buff := new(bytes.Buffer)
+	e := labgob.NewEncoder(buff)
 	e.Encode(rf.currentTerm)
 	e.Encode(rf.votedFor)
 	e.Encode(rf.commitIndex)
 	e.Encode(rf.logs)
 	e.Encode(rf.lastSnapshotIndex)
 	e.Encode(rf.lastSnapshotTerm)
-	raftdata := w.Bytes()
+	raftdata := buff.Bytes()
 	return raftdata
 }
 
@@ -161,14 +162,6 @@ func (rf *Raft) readPersist(data []byte) {
 	}
 }
 
-// 该服务表示它已经创建了一个快照
-// 直到并包括index的所有信息。这意味着
-// 服务不再需要日志通过（并包括）
-// 该索引。 Raft 现在应该尽可能地修剪其日志。
-func (rf *Raft) Snapshot(index int, snapshot []byte) {
-	// Your code here (2D).
-
-}
 
 // labrpc包模拟有损网络，其中服务器
 // 可能无法访问，并且其中请求和回复可能会丢失。
